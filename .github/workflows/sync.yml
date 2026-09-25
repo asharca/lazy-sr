@@ -1,0 +1,42 @@
+name: Sync rules
+
+on:
+  schedule:
+    - cron: "0 19 * * *" # daily 03:00 Beijing
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download upstream rules
+        working-directory: rules
+        run: |
+          set -e
+          find . -type f -print0 | xargs -0 -P 8 -I{} sh -c '
+            f="{}"
+            url="https://${f#./}"
+            if curl -sL --fail --retry 2 "$url" -o "$f.tmp"; then
+              mv "$f.tmp" "$f"
+            else
+              rm -f "$f.tmp"
+              echo "::warning::failed: $url (kept local copy)"
+            fi
+          '
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add rules
+          if ! git diff --cached --quiet; then
+            git commit -m "Sync rules from upstream $(date -u +%F)"
+            git push
+          else
+            echo "No changes"
+          fi
